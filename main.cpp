@@ -14,7 +14,6 @@ struct Process{
     string name;
     HANDLE handle;
     long int memory;
-    DWORD errorName;
 };
 
 //pr1 < pr2 - true 
@@ -42,7 +41,6 @@ Process CreateProcessInfo(PROCESSENTRY32 proc)
     if (NULL == hProcess){
         process.handle = NULL;
         process.memory = -1;
-        process.errorName = GetLastError();
         return process;
     }
     
@@ -50,32 +48,69 @@ Process CreateProcessInfo(PROCESSENTRY32 proc)
     
     if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))){
         process.memory = pmc.WorkingSetSize;
-        process.errorName = 0;
     } else{
-        process.memory = -2;
-        process.errorName = GetLastError();
+        process.memory = -1;
     }
     
     return process;
 }
 
-void PrintInform(Process proc){
+void PrintProcessInform(Process proc){
     cout.width(9);
     cout << proc.id;
     cout.width(30); 
     cout << proc.name;
     cout.width(12);
-    cout << proc.memory << " " << proc.errorName << endl;
+    if(proc.memory != -1)
+        cout << proc.memory;
+    else
+        cout << "no access";
 }
 
-int main(int argc, char* argv[])
-{   
+void PrintIntro(){
+    cout << " No";
+    cout.width(9);
+    cout << "PID";
+    cout.width(30); 
+    cout << "name.exe";
+    cout.width(12);
+    cout << "RAM" << endl << endl;
+}
+
+void PrintProcessArray(vector<Process> procArray){
+    cout << "Processes: " << procArray.size() << endl << endl;
+    
+    PrintIntro();    
+    
+    for (int i = 0; i < procArray.size() - 3; i++){            
+        cout.width(3);
+        cout << i;
+        PrintProcessInform(procArray.at(i));
+        cout << endl;
+    }
+
+    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(hStdOut, BACKGROUND_RED | FOREGROUND_INTENSITY);
+    for (int i = procArray.size() - 3; i < procArray.size(); i++){            
+        cout.width(3);
+        cout << i;
+        PrintProcessInform(procArray.at(i));
+        cout << endl;
+        }
+    SetConsoleTextAttribute(hStdOut, FOREGROUND_RED | 
+            FOREGROUND_BLUE | FOREGROUND_GREEN);
+    
+    cout << endl;
+}
+
+vector<Process> CreateCurrentProcessArray(){
+    vector<Process> emptyVector;
     HANDLE hSnap;
     hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnap == NULL)
     {
-        cout << "Snapshot hasn't been taken." << endl;
-        return 0;
+        cout << "Error: processes snapshot hasn't been taken." << endl;
+        return emptyVector;
     }
 
     PROCESSENTRY32 proc;
@@ -87,48 +122,87 @@ int main(int argc, char* argv[])
         do{
             procArray.push_back(CreateProcessInfo(proc));
         }while (Process32Next(hSnap, &proc));
-        
-        cout << "Processes: " << procArray.size() << endl << endl;
-        cout << " No";
-        cout.width(9);
-        cout << "PID";
-        cout.width(30); 
-        cout << "name.exe";
-        cout.width(12);
-        cout << "RAM" << " ErrorCode" << endl << endl;
-        
-        sort(procArray.begin(), procArray.end(), comp);
-        
-        for (int i = 0; i < procArray.size(); i++)
-        {
-            cout.width(3);
-            cout << i;
-            PrintInform(procArray.at(i));
-            
+    }
+    else{
+        cout << "ProcessEntry32 iterator error. Code: " << GetLastError() <<  endl;
+        return emptyVector;
+    }
+    
+    sort(procArray.begin(), procArray.end(), comp);
+    return procArray;
+}
+
+void AskUserChoice(){
+    cout << "Anything else? Press 0 to terminate another process," << endl <<
+                "1 to terminate top-3 of the heaviest processes," << endl <<
+                "2 to exit the program." << endl;
+}
+
+int main(int argc, char* argv[])
+{   
+    //dialogue with user
+    int checker = 0;
+    while(checker != 2){
+        switch(checker){
+            case 0:
+            {
+                vector<Process> procArray = CreateCurrentProcessArray();
+                PrintProcessArray(procArray);
+                cout << endl << "Choose an index of a process to be terminated: ";
+                int killer;
+                cin >> killer;
+                cout << endl;
+
+                DWORD procTermStatus = 1;
+                GetExitCodeProcess(procArray.at(killer).handle, &procTermStatus);
+                if(TerminateProcess(procArray.at(killer).handle, procTermStatus))
+                    cout << "The process was terminated successfully!" << endl;
+                else
+                    cout << "Error. Its code for you to check out: " << GetLastError() << endl;
+                
+                AskUserChoice();
+                        
+                cin >> checker;
+                if(checker != 2)
+                    system("cls");
+                break;
+            }
+
+            case 1: 
+            {
+                vector<Process> procArray = CreateCurrentProcessArray();
+                DWORD procTermStatus = 1;
+                bool success = true;
+                for(int i = 0; i < 3; i++){
+                    GetExitCodeProcess(procArray.back().handle, &procTermStatus);
+                    i++;
+                    if(TerminateProcess(procArray.back().handle, procTermStatus)){
+                        procArray.erase(procArray.end());
+                    }
+                    else{
+                        success = false;
+                        break;
+                    }     
+                }
+                
+                PrintProcessArray(procArray);
+                if(success){
+                    cout << "Top-3 processes were terminated successfully!" << endl;
+                    AskUserChoice();
+                }
+                else{
+                    cout << "Something went wrong." << endl;
+                    AskUserChoice();
+                }
+                
+                cin >> checker;
+                if(checker != 2)
+                    system("cls");
+                break;
+            }
         }
-    } else {
-        cout << "ProcessEntry32 iter error. Code: " << GetLastError() <<  endl;
     }
-    
-    cout << endl << "Choose an index of a process to be terminated: ";
-    int killer;
-    cin >> killer;
-    cout << endl;
-    
-    DWORD procTermStatus = 2;
-    GetExitCodeProcess(procArray.at(killer).handle, &procTermStatus);
-    bool success = TerminateProcess(procArray.at(killer).handle, procTermStatus);
-    
-    for(int i = 0; i < procArray.size(); i++){
-        CloseHandle(procArray.at(i).handle);
-    }
-    
-    if(success)
-        cout << "The process was terminated successfully!" << endl;
-    else
-        cout << "Error. Code for you to check out: " << GetLastError() << endl;
     
     system("pause");
-    CloseHandle(hSnap);
     return 0;
 }
