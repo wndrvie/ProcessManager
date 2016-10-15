@@ -270,5 +270,6 @@ int main(int argc, char* argv[])
     
     cout << "Bye! :)" << endl;
     system("pause");
+    CloseHandle(hStdOut);
     return 0;
 }
